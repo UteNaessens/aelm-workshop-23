@@ -1,22 +1,24 @@
 name: Golang build
-
+ 
 on:
   # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
   push:
     branches:
       - '**'
-  # https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#release
   release:
-    types:
-      - published
+     types:
+       - published
+ 
+# These variables can be reused in the build steps
 env:
-  DOCKER_REPOSITORY: tourna
-  DOCKER_IMAGE: aelm-workshop-23
   GOLANG_VERSION: 1.21.x
-
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+ 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Code Build steps
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go ${{ env.GOLANG_VERSION }}
@@ -32,9 +34,45 @@ jobs:
           name: workshop
           path: bin/
           retention-days: 1
+  # docker:
+  #   # Dependency on previous step to complete
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Download build artifacts
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: workshop
+  #         path: ./bin
+  #     - name: Display structure of downloaded files
+  #       run: ls -R
+  #       working-directory: .
+  #     # Docker container steps
+  #     - name: Login to DockerHub
+  #       uses: docker/login-action@v3
+  #       with:
+  #         username: ${{secrets.DOCKER_USERNAME}}
+  #         password: ${{secrets.DOCKER_PASSWORD}}
+  #     - name: Extract metadata (tags, labels) for Docker
+  #       uses: docker/metadata-action@v4
+  #       id: meta
+  #       with:
+  #         images: ${{env.DOCKER_REPOSITORY}}/${{env.DOCKER_IMAGE}}
+  #     - name: Build and push Docker image
+  #       uses: docker/build-push-action@v3
+  #       with:
+  #         context: .
+  #         file: Dockerfile
+  #         push: true
+  #         tags: ${{ steps.meta.outputs.tags }}
+ 
   docker:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v2
       - name: Download build artifacts
@@ -45,18 +83,22 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R
         working-directory: .
-      - name: Login to DockerHub
+ 
+      - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
-          username: ${{secrets.DOCKER_USERNAME}}
-          password: ${{secrets.DOCKER_PASSWORD}}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+ 
       - name: Extract metadata (tags, labels) for Docker
-        uses: docker/metadata-action@v4
         id: meta
+        uses: docker/metadata-action@v4
         with:
-          images: ${{env.DOCKER_REPOSITORY}}/${{env.DOCKER_IMAGE}}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+ 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile
